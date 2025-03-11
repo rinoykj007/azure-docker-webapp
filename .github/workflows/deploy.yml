@@ -1,0 +1,45 @@
+name: Build and Deploy Docker
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Build Docker image
+      run: |
+        cd webapp
+        docker build -t webapp:latest .
+    
+    - name: Install SSH key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H 52.169.72.144 >> ~/.ssh/known_hosts
+    
+    - name: Deploy to Azure VM
+      run: |
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa adminuser@52.169.72.144 "
+          mkdir -p ~/webapp
+          exit
+        "
+        scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa webapp/Dockerfile adminuser@52.169.72.144:~/webapp/
+        scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa webapp/index.html adminuser@52.169.72.144:~/webapp/
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa adminuser@52.169.72.144 "
+          cd ~/webapp
+          docker build -t webapp:latest .
+          docker stop mywebapp || true
+          docker rm mywebapp || true
+          docker run -d -p 80:80 --name mywebapp webapp:latest
+        "
